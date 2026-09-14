@@ -72,6 +72,8 @@
 
   <div class="toolbar">
     <button id="btnPdf" class="primary">Export PDF</button>
+    <button id="btnExport">Export data</button>
+    <button id="btnImport">Import data</button>
   </div>
   <p class="hint">Install on Android: open this file in Chrome - menu - "Add to Home screen".</p>
 
@@ -89,7 +91,7 @@
 
   <div id="groups"></div>
   <div class="toolbar">
-    <select id="newLiftGroup"><option>Push</option><option>Pull</option><option>Legs</option></select>
+    <select id="newLiftGroup"><option>Chest</option><option>Back</option><option>Shoulder</option><option>Legs</option></select>
     <button id="btnAddLift">+ Add lift</button>
   </div>
   <p class="hint">To move a lift between groups: press and drag its handle (the three lines) onto the group you want.</p>
@@ -537,32 +539,41 @@ function(t){t.__bidiEngine__=t.prototype.__bidiEngine__=function(t){var r,n,i,a,
   }catch(e){}
 })();
 
-const LS_KEY = "liftingPctGuideV4";
+const LS_KEY = "liftingPctGuideV5";
 const PCTS = [85, 75, 65];
-const GROUPS = ["Push", "Pull", "Legs"];
-let lidc = 1;
+const GROUPS = ["Chest", "Back", "Shoulder", "Legs"];
+const OLD_GROUPS = { Push:"Chest", Pull:"Back", Legs:"Legs" };
+let lidc = 0;
 
 const DEF_ORDER = [
-  ["Bench Press",94.1,"Push"], ["Military Press",58.8,"Push"], ["DB 1-Arm High Incline Press",35.3,"Push"],
-  ["Pull-Up (added)",8.8,"Pull"], ["Bent Over Row",100,"Pull"], ["Landmine 1-Arm Row",47.1,"Pull"],
+  ["Bench Press",94.1,"Chest"],
+  ["Pull-Up (added)",8.8,"Back"], ["Bent Over Row",100,"Back"], ["Landmine 1-Arm Row",47.1,"Back"],
+  ["Military Press",58.8,"Shoulder"], ["DB 1-Arm High Incline Press",35.3,"Shoulder"],
   ["Back Squat",100,"Legs"], ["SLDL",200,"Legs"], ["Front Squat",100,"Legs"], ["Jefferson Curl",152.9,"Legs"]
 ];
 
+function newLid(){ return "l"+Date.now().toString(36)+"-"+(lidc++).toString(36)+"-"+Math.random().toString(36).slice(2,6); }
+
 function defaults(){
-  return { lifts: DEF_ORDER.map(([name,e1rm,group])=>({name, e1rm, group})) };
+  return { lifts: DEF_ORDER.map(([name,e1rm,group])=>({name, e1rm, group, lid:newLid()})) };
 }
 
 function guessGroup(name){
   const d = DEF_ORDER.find(x => x[0].toLowerCase() === String(name||"").toLowerCase());
-  return d ? d[2] : "Push";
+  return d ? d[2] : "Chest";
 }
 function fixup(s){
-  s.lifts.forEach(l=>{ if(!l.group) l.group = guessGroup(l.name); if(!GROUPS.includes(l.group)) l.group = "Push"; if(!(l.lid>0)) l.lid = lidc++; });
+  s.lifts.forEach(l=>{
+    if(!l.group) l.group = guessGroup(l.name);
+    if(OLD_GROUPS[l.group]) l.group = guessGroup(l.name);
+    if(!GROUPS.includes(l.group)) l.group = guessGroup(l.name);
+    if(typeof l.lid !== "string" || !l.lid) l.lid = newLid();
+  });
   return s;
 }
 function migrateOld(){
   try{
-    for(const k of ["liftingPctGuideV3","liftingPctGuideV2","liftPctGuideV1"]){
+    for(const k of ["liftingPctGuideV4","liftingPctGuideV3","liftingPctGuideV2","liftPctGuideV1"]){
       const raw = localStorage.getItem(k);
       if(!raw) continue;
       const s = JSON.parse(raw);
@@ -729,10 +740,10 @@ function onDragMove(e){
     const r = tr.getBoundingClientRect();
     const after = e.clientY > r.top + r.height/2;
     tr.classList.add(after ? "drop-after" : "drop-before");
-    drag.target = { lid: tr.dataset.lid ? +tr.dataset.lid : null, after, group: tb.dataset.group };
+    drag.target = { obj: state.lifts.find(x=>x.lid===tr.dataset.lid) || null, after, group: tb.dataset.group };
   }else{
     tb.classList.add("drop-tbody");
-    drag.target = { lid: null, after: false, group: tb.dataset.group };
+    drag.target = { obj: null, after: false, group: tb.dataset.group };
   }
 }
 function onDragEnd(){
@@ -749,8 +760,8 @@ function onDragEnd(){
   if(i > -1) state.lifts.splice(i,1);
   l.group = target.group;
   let at = state.lifts.length;
-  if(target.lid != null){
-    const j = state.lifts.findIndex(x=>x.lid===target.lid);
+  if(target.obj){
+    const j = state.lifts.indexOf(target.obj);
     if(j > -1) at = target.after ? j+1 : j;
   }
   state.lifts.splice(at, 0, l);
@@ -831,6 +842,41 @@ function exportPdf(){
 
 document.getElementById("btnPdf").onclick = exportPdf;
 
+document.getElementById("btnExport").onclick = ()=>{
+  const data = JSON.stringify(state, null, 1);
+  try{ if(navigator.clipboard) navigator.clipboard.writeText(data); }catch(e){}
+  const blob = new Blob([data], {type:"application/json"});
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "lifting-data.json";
+  document.body.appendChild(a); a.click(); a.remove();
+  toast("Exported lifting-data.json (also copied)");
+};
+
+document.getElementById("btnImport").onclick = ()=>{
+  const inp = document.createElement("input");
+  inp.type = "file"; inp.accept = ".json,application/json,text/plain";
+  inp.onchange = ()=>{
+    const f = inp.files[0]; if(!f) return;
+    const rd = new FileReader();
+    rd.onload = ()=>{
+      try{
+        const s = JSON.parse(rd.result);
+        if(!s || !Array.isArray(s.lifts)) throw 0;
+        state = fixup({ lifts: s.lifts.map(l=>({
+          name: l.name || "Lift",
+          e1rm: r1(l.e1rm) || 0,
+          group: l.group,
+          lid: (typeof l.lid === "string" && l.lid) ? l.lid : newLid()
+        }))});
+        save(); render(); toast("Imported: "+state.lifts.length+" lifts");
+      }catch(e){ toast("Invalid file"); }
+    };
+    rd.readAsText(f);
+  };
+  inp.click();
+};
+
 if (location.protocol.startsWith("http") && "serviceWorker" in navigator) {
   window.addEventListener("load", () => {
     navigator.serviceWorker.register("sw.js").catch(()=>{});
@@ -838,7 +884,7 @@ if (location.protocol.startsWith("http") && "serviceWorker" in navigator) {
 }
 document.getElementById("btnAddLift").onclick = ()=>{
   const g = document.getElementById("newLiftGroup").value;
-  state.lifts.push({name:"New Lift", e1rm:100, group:g, lid:lidc++});
+  state.lifts.push({name:"New Lift", e1rm:100, group:g, lid:newLid()});
   save(); render();
 };
 

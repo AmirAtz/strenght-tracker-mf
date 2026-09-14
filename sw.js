@@ -1,4 +1,4 @@
-const CACHE = "lpg-v1";
+const CACHE = "lpg-v2";
 const ASSETS = ["./", "./index.html", "./lifting-percentages.html"];
 
 self.addEventListener("install", (e) => {
