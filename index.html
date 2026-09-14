@@ -558,15 +558,16 @@ function defaults(){
   return { lifts: DEF_ORDER.map(([name,e1rm,group])=>({name, e1rm, group, lid:newLid()})) };
 }
 
-function guessGroup(name){
+function nameGroup(name){
   const d = DEF_ORDER.find(x => x[0].toLowerCase() === String(name||"").toLowerCase());
-  return d ? d[2] : "Chest";
+  return d ? d[2] : null;
 }
+function guessGroup(name){ return nameGroup(name) || "Chest"; }
 function fixup(s){
   s.lifts.forEach(l=>{
-    if(!l.group) l.group = guessGroup(l.name);
-    if(OLD_GROUPS[l.group]) l.group = guessGroup(l.name);
-    if(!GROUPS.includes(l.group)) l.group = guessGroup(l.name);
+    if(!l.group || !GROUPS.includes(l.group)){
+      l.group = nameGroup(l.name) || OLD_GROUPS[l.group] || "Chest";
+    }
     if(typeof l.lid !== "string" || !l.lid) l.lid = newLid();
   });
   return s;
@@ -638,10 +639,10 @@ function makeRow(l){
 
   const td1 = document.createElement("td");
   const in1 = document.createElement("input");
-  in1.type = "number"; in1.step = "0.1"; in1.min = "0"; in1.className = "w pct85";
+  in1.type = "text"; in1.inputMode = "decimal"; in1.autocomplete = "off"; in1.className = "w pct85";
   in1.value = fmt(l.e1rm);
   in1.onchange = ()=>{
-    const v = parseFloat(in1.value);
+    const v = parseFloat(String(in1.value).replace(",", "."));
     if(v>0){ l.e1rm = r1(v); save(); render(); toast(l.name+": 1RM set to "+fmt(v)); }
     else render();
   };
@@ -652,11 +653,11 @@ function makeRow(l){
     const td = document.createElement("td");
     td.className = "num";
     const inp = document.createElement("input");
-    inp.type = "number"; inp.step = "0.1"; inp.min = "0"; inp.className = "w pct"+p;
+    inp.type = "text"; inp.inputMode = "decimal"; inp.autocomplete = "off"; inp.className = "w pct"+p;
     inp.value = fmt(l.e1rm * p/100);
     inp.title = p+"% of "+fmt(l.e1rm)+" - type your new weight here";
     inp.onchange = ()=>{
-      const v = parseFloat(inp.value);
+      const v = parseFloat(String(inp.value).replace(",", "."));
       if(v>0) setFromPct(l, p, v);
       else render();
     };
@@ -841,6 +842,13 @@ function exportPdf(){
 }
 
 document.getElementById("btnPdf").onclick = exportPdf;
+
+document.addEventListener("focusin", (e)=>{
+  const t = e.target;
+  if(t && t.classList && t.classList.contains("w")){
+    try{ t.select(); }catch(err){}
+  }
+});
 
 document.getElementById("btnExport").onclick = ()=>{
   const data = JSON.stringify(state, null, 1);
