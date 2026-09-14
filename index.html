@@ -686,6 +686,7 @@ function render(){
     host.appendChild(h);
     const card = document.createElement("div");
     card.className = "card"; card.style.padding = "0"; card.style.overflowX = "auto";
+    card.dataset.group = g;
     const table = document.createElement("table");
     table.innerHTML = '<thead><tr><th></th><th>Lift</th><th>1RM</th><th>85%</th><th>75%</th><th>65%</th><th></th></tr></thead>';
     const tb = document.createElement("tbody");
@@ -734,17 +735,21 @@ function onDragMove(e){
   drag.target = null;
   const el = document.elementFromPoint(e.clientX, e.clientY);
   if(!el || !el.closest) return;
-  const tb = el.closest("tbody[data-group]");
+  const grpEl = el.closest("[data-group]");
+  if(!grpEl) return;
+  const group = grpEl.dataset.group;
+  const tb = document.querySelector('tbody[data-group="'+group+'"]');
   if(!tb) return;
   const tr = el.closest("tr");
-  if(tr && tr !== drag.row && tb.contains(tr)){
+  if(tr && tr === drag.row) return;
+  if(tr && tb.contains(tr)){
     const r = tr.getBoundingClientRect();
     const after = e.clientY > r.top + r.height/2;
     tr.classList.add(after ? "drop-after" : "drop-before");
-    drag.target = { obj: state.lifts.find(x=>x.lid===tr.dataset.lid) || null, after, group: tb.dataset.group };
+    drag.target = { obj: state.lifts.find(x=>x.lid===tr.dataset.lid) || null, after, group: group };
   }else{
     tb.classList.add("drop-tbody");
-    drag.target = { obj: null, after: false, group: tb.dataset.group };
+    drag.target = { obj: null, after: false, group: group };
   }
 }
 function onDragEnd(){
